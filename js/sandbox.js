@@ -1,8 +1,11 @@
 /**
  * Run a repo's transform module in a sandboxed iframe: sandbox="allow-scripts"
  * without allow-same-origin → opaque origin, and sandbox.html carries its own
- * CSP (default-src 'none') so repo code has no network egress. The parent —
- * never the sandbox — hashes the outputs.
+ * CSP (default-src 'none') denying network access. Inside the iframe the
+ * transform runs in a disposable module Worker that is hard-terminated on
+ * timeout (no DOM/navigation APIs, terminable mid-loop). The parent — never
+ * the sandbox — hashes the outputs. Defense in depth, not a formally proven
+ * boundary; see README limitations.
  *
  * sandbox.html is a separate document (not srcdoc) because srcdoc inherits
  * the parent page's CSP, which forbids inline scripts.
@@ -49,6 +52,7 @@ export function runTransform({ moduleSources, entryModule, entryName, inputs, ou
           entryName,
           inputs: inputBuffers,
           outputPaths,
+          timeoutMs,
         }, '*', transfers);
         return;
       }

@@ -20,7 +20,9 @@ export function computeGrade(ev) {
   }
   if (ev.truncated) add('warn', 'Repository tree was truncated by the GitHub API — analysis covers a sample of files.');
 
-  const generators = ev.scans.filter((s) => s.referencesData || s.writesData || s.wiresGenerators);
+  // writesData alone is not generator evidence — generic write calls appear in
+  // unrelated build tooling. It only counts coupled to a data-path reference.
+  const generators = ev.scans.filter((s) => s.referencesData || s.wiresGenerators);
   const anyUnpinned = generators.some((s) => s.unpinnedFetch);
   const anyNetwork = generators.some((s) => s.networkCalls);
   const scheduled = ev.scans.filter((s) => s.scheduledWorkflow);
@@ -81,6 +83,18 @@ export function computeGrade(ev) {
       };
     }
     if (verified + weak > 0) {
+      // B means ALL inputs are pinned. Verified pins alongside live unpinned
+      // fetches is mixed evidence, not a B.
+      if (anyUnpinned) {
+        const offenders = generators.filter((s) => s.unpinnedFetch);
+        add('bad', `${verified + weak} pinned input(s) verified, but generator(s) also fetch live unpinned sources: ${offenders.slice(0, 5).map((s) => s.path).join(', ')}. B requires every network input to be pinned.`);
+        return {
+          grade: 'C',
+          verdict: 'partially pinned — some inputs are still moving targets',
+          bullets,
+          next: ['Pin the remaining live sources to immutable commits with recorded hashes; when every network input is pinned and verifiable, that is grade B.'],
+        };
+      }
       add('good', `Actively verified ${verified} pinned input(s)${weak ? ` (+${weak} pinned to commit without an independent content hash)` : ''}${skipped ? `, ${skipped} skipped` : ''} — re-downloaded and hashes matched.`);
       return {
         grade: 'B',

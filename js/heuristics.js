@@ -57,6 +57,9 @@ export function classifyTree(entries) {
   const codeFiles = blobs.filter((e) => {
     if (excluded(e.path)) return false;
     const base = e.path.split('/').pop();
+    // Test files are not generators — their fixtures legitimately contain
+    // mutable-URL strings (asserting they get rejected) and generic writes.
+    if (/(\.(test|spec)\.[a-z]+|_test\.[a-z]+)$/i.test(base) || /^test_[^/]+\.py$/i.test(base)) return false;
     return CODE_EXTS.has(ext(e.path)) || base === 'Makefile' || base === 'Justfile' || base === 'Dockerfile';
   });
 
@@ -112,6 +115,22 @@ const MUTABLE_URL_RE = /(raw\.githubusercontent\.com\/[^/\s"'`]+\/[^/\s"'`]+\/(m
 const COMMIT_IN_URL_RE = /\/[0-9a-f]{40}\//;
 const PIN_ASSIGN_RE = /\b(commit|sha|rev|ref|revision|version)\s*[:=]\s*["']([0-9a-f]{40})["']/gi;
 const SHA256_CONST_RE = /\b[0-9a-f]{64}\b/;
+const TEMPLATE_MARK_RE = /[${}%]|\+\s*$/;
+
+const isPinnedUrl = (u) => COMMIT_IN_URL_RE.test(u) || /@[0-9a-f]{40}\b/.test(u);
+
+/** A literal URL that plausibly fetches data live (unpinned). Excludes
+ * runtime-composed templates (judged by their resolved pins), api.github.com
+ * revision lookups, and github.com web pages that aren't data fetches. */
+function isLiveDataUrl(u) {
+  if (TEMPLATE_MARK_RE.test(u)) return false;
+  const host = u.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+  if (host === 'api.github.com') return false;
+  if (host === 'github.com' || host === 'www.github.com') {
+    return /\/(raw|releases\/download|archive)\//.test(u);
+  }
+  return true;
+}
 
 /**
  * Scan one script's text against the tree facts.
@@ -126,6 +145,7 @@ export function scanScriptText(path, text, facts) {
     networkCalls: false,
     unpinnedFetch: false,
     pinnedUrls: [],
+    liveUrls: [],
     commitPins: [],
     hasSha256Constants: false,
     readsCommittedInputs: [],
@@ -152,18 +172,21 @@ export function scanScriptText(path, text, facts) {
   }
   if (WRITE_RE.test(text)) result.writesData = true;
 
-  // Network + pinning
+  // Network + pinning. One pinned source does not excuse a live one: a script
+  // is unpinned unless ALL of its detected network inputs are pinned.
   const urls = text.match(URL_RE) ?? [];
   result.networkCalls = NET_CALL_RE.test(text);
   for (const u of urls) {
-    if (COMMIT_IN_URL_RE.test(u) || /@[0-9a-f]{40}\b/.test(u)) result.pinnedUrls.push(u);
+    if (isPinnedUrl(u)) result.pinnedUrls.push(u);
+    else if (isLiveDataUrl(u)) result.liveUrls.push(u);
   }
   let m;
   while ((m = PIN_ASSIGN_RE.exec(text)) !== null) result.commitPins.push(m[2]);
   result.hasSha256Constants = SHA256_CONST_RE.test(text);
   const hasMutableUrl = MUTABLE_URL_RE.test(text);
-  result.unpinnedFetch = (result.networkCalls || hasMutableUrl)
-    && result.pinnedUrls.length === 0 && result.commitPins.length === 0;
+  result.unpinnedFetch = hasMutableUrl
+    || (result.networkCalls && (result.liveUrls.length > 0
+      || (result.pinnedUrls.length === 0 && result.commitPins.length === 0)));
 
   // Reads of paths committed in the same tree (relative reads, no network → pinned by commit)
   const readRe = /(?:open|read_csv|read_json|readFileSync|readFile|read\.csv|fromJSON|loadtxt|pd\.read_\w+)\s*\(\s*["']([^"']+)["']/g;

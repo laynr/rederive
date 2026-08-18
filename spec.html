@@ -55,8 +55,11 @@
       <p><code>module</code> is a path to a <strong>pure ES module</strong> in
       your repo. Relative imports to other committed modules are allowed
       (up to 10 files); bare or absolute specifiers are rejected. It runs in a
-      sandboxed iframe with <code>default-src 'none'</code> — no network, no
-      storage, no cookies.</p>
+      disposable Web Worker inside a sandboxed, opaque-origin iframe whose CSP
+      is <code>default-src 'none'</code>, and is hard-terminated on timeout.
+      This is layered isolation designed to deny network, storage and cookies
+      — correctness is anchored by the byte comparison, not by trusting the
+      transform.</p>
       <p>The entry function (default name <code>derive</code>) receives your
       inputs as bytes and returns your outputs:</p>
       <pre>export async function derive(inputs) {

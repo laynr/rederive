@@ -47,26 +47,85 @@ window.addEventListener('message', async (event) => {
       return url;
     };
     const entryUrl = build(msg.entryModule, []);
-    const mod = await import(entryUrl);
-    const entry = mod[msg.entryName];
-    if (typeof entry !== 'function') throw new Error('entry export "' + msg.entryName + '" is not a function');
-    const inputs = {};
-    for (const [name, buf] of Object.entries(msg.inputs)) inputs[name] = new Uint8Array(buf);
-    const result = await entry(inputs);
-    if (!result || typeof result !== 'object') throw new Error('transform must return an object of {outputPath: bytes|string}');
-    const outputs = {};
-    const transfers = [];
-    for (const [path, value] of Object.entries(result)) {
-      const bytes = typeof value === 'string' ? new TextEncoder().encode(value)
-        : value instanceof Uint8Array ? value
-        : value instanceof ArrayBuffer ? new Uint8Array(value)
-        : null;
-      if (!bytes) throw new Error('output ' + path + ' is neither bytes nor string');
-      const copy = bytes.slice().buffer;
-      outputs[path] = copy;
-      transfers.push(copy);
+
+    const encodeOutputs = (result) => {
+      if (!result || typeof result !== 'object') throw new Error('transform must return an object of {outputPath: bytes|string}');
+      const outputs = {};
+      const transfers = [];
+      for (const [path, value] of Object.entries(result)) {
+        const bytes = typeof value === 'string' ? new TextEncoder().encode(value)
+          : value instanceof Uint8Array ? value
+          : value instanceof ArrayBuffer ? new Uint8Array(value)
+          : null;
+        if (!bytes) throw new Error('output ' + path + ' is neither bytes nor string');
+        const copy = bytes.slice().buffer;
+        outputs[path] = copy;
+        transfers.push(copy);
+      }
+      return { outputs, transfers };
+    };
+
+    const runInline = async () => {
+      const mod = await import(entryUrl);
+      const entry = mod[msg.entryName];
+      if (typeof entry !== 'function') throw new Error('entry export "' + msg.entryName + '" is not a function');
+      const inputs = {};
+      for (const [name, buf] of Object.entries(msg.inputs)) inputs[name] = new Uint8Array(buf);
+      return encodeOutputs(await entry(inputs));
+    };
+
+    // Preferred: a disposable module Worker — terminable mid-run (hard CPU
+    // boundary) and without DOM/navigation APIs. Falls back to running on the
+    // iframe's own thread if Worker creation is unavailable here.
+    const runInWorker = () => new Promise((resolve, reject) => {
+      const workerCode = 'self.onmessage = async (e) => {\n'
+        + '  const { entryUrl, entryName, inputs } = e.data;\n'
+        + '  try {\n'
+        + '    const mod = await import(entryUrl);\n'
+        + '    const entry = mod[entryName];\n'
+        + '    if (typeof entry !== "function") throw new Error("entry export \\"" + entryName + "\\" is not a function");\n'
+        + '    const inp = {};\n'
+        + '    for (const [k, b] of Object.entries(inputs)) inp[k] = new Uint8Array(b);\n'
+        + '    self.postMessage({ ok: true, result: await entry(inp) });\n'
+        + '  } catch (err) { self.postMessage({ ok: false, message: String(err && err.message || err) }); }\n'
+        + '};\n';
+      const worker = new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' })), { type: 'module' });
+      const timeoutMs = Math.min(Number(msg.timeoutMs) || 30000, 60000);
+      const timer = setTimeout(() => {
+        worker.terminate();
+        reject(new Error('transform timed out after ' + timeoutMs + ' ms (worker terminated)'));
+      }, timeoutMs);
+      worker.onerror = (e) => { clearTimeout(timer); worker.terminate(); reject(new Error(e.message || 'worker error')); };
+      worker.onmessage = (e) => {
+        clearTimeout(timer);
+        worker.terminate();
+        try {
+          if (!e.data.ok) throw new Error(e.data.message);
+          resolve(encodeOutputs(e.data.result));
+        } catch (err) { reject(err); }
+      };
+      // Transfer copies so msg.inputs stays intact for the inline fallback.
+      const inputCopies = {};
+      const transfers = [];
+      for (const [k, b] of Object.entries(msg.inputs)) {
+        const copy = b.slice(0);
+        inputCopies[k] = copy;
+        transfers.push(copy);
+      }
+      worker.postMessage({ entryUrl, entryName: msg.entryName, inputs: inputCopies }, transfers);
+    });
+
+    let ran;
+    try {
+      ran = await runInWorker();
+    } catch (error) {
+      if (/worker|Worker/.test(String(error)) && !/timed out|is not a function/.test(String(error))) {
+        ran = await runInline();
+      } else {
+        throw error;
+      }
     }
-    reply({ type: 'result', outputs }, transfers);
+    reply({ type: 'result', outputs: ran.outputs }, ran.transfers);
   } catch (error) {
     reply({ type: 'error', message: String(error && error.message || error) });
   }

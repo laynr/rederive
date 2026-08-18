@@ -14,7 +14,7 @@
     <p class="tagline">can this repo's data actually be re-derived from its own scripts? paste it, find out.</p>
 
     <form id="grade-form">
-      <input id="repo-input" type="text" placeholder="owner/repo or github.com URL" autocomplete="off" spellcheck="false" autofocus>
+      <input id="repo-input" type="text" aria-label="GitHub repository — owner/repo or any github.com URL" placeholder="owner/repo or github.com URL" autocomplete="off" spellcheck="false" autofocus>
       <button id="grade-btn" type="submit">grade</button>
     </form>
     <div class="chips">
@@ -32,8 +32,8 @@
     </ul>
     <p class="spec-link"><a href="./spec.html">the rederive.json spec</a></p>
 
-    <ol id="progress" hidden></ol>
-    <div id="report" hidden></div>
+    <ol id="progress" aria-live="polite" hidden></ol>
+    <div id="report" aria-live="polite" hidden></div>
   </main>
   <script type="module" src="./js/main.js"></script>
 </body>

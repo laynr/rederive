@@ -100,10 +100,11 @@ export function renderReport({ repo, commit, grade, verdict, bullets, next, pinR
   }
 
   if (commit) {
-    const permalink = `${location.origin}${location.pathname}?repo=${encodeURIComponent(repo)}`;
+    const shareLink = `${location.origin}${location.pathname}?repo=${encodeURIComponent(repo)}`;
     out.append(el('p', { class: 'footer-note' },
       el('span', { text: `analyzed ${repo} at commit ${commit.slice(0, 12)} · ` }),
-      el('a', { href: permalink, text: 'permalink' })));
+      el('a', { href: shareLink, text: 'share link' }),
+      el('span', { text: ' (re-analyzes the current default branch)' })));
   }
   out.hidden = false;
 }

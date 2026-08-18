@@ -12,7 +12,7 @@ import { sha256Hex, gitBlobSha1 } from './fetch-verified.js';
 const SCAN_BUDGET = { maxFiles: 20, maxTotalBytes: 1.5 * 1024 * 1024 };
 const STEPS = ['resolve repository', 'fetch file tree', 'scan generation code', 'check pin manifests', 'verify pinned inputs', 're-derive (rederive.json)'];
 
-async function analyze(repoFull) {
+async function analyze(repoFull, isCurrent) {
   const progress = createProgress(STEPS);
   const resolver = createRevisionResolver();
 
@@ -23,6 +23,7 @@ async function analyze(repoFull) {
 
   progress.start('fetch file tree');
   const tree = await getTree(meta.fullName, commit);
+  if (!isCurrent()) return;
   const facts = classifyTree(tree.entries);
   progress.done('fetch file tree', `${tree.entries.length} entries${tree.truncated ? ' (truncated)' : ''}`);
 
@@ -57,6 +58,7 @@ async function analyze(repoFull) {
   }
   const pins = dedupePins([...manifestPins, ...extractScriptPins(scans)]);
   progress.done('check pin manifests', `${pins.length} pin(s) found`);
+  if (!isCurrent()) return;
 
   // Active verification (B)
   let pinReport = null;
@@ -104,29 +106,40 @@ async function analyze(repoFull) {
     manifest: manifestResult,
   });
 
+  if (!isCurrent()) return;
   renderReport({ repo: meta.fullName, commit, ...graded, pinReport, manifestResult });
 }
 
+// Guards against concurrent analyses racing: only the newest run may touch
+// the report or re-enable the button; stale runs finish silently.
+let analysisGeneration = 0;
+
 async function run(input) {
+  const gen = ++analysisGeneration;
+  const isCurrent = () => gen === analysisGeneration;
+  const btn = document.querySelector('#grade-btn');
+  btn.disabled = true;
   const parsed = parseRepoInput(input);
   const report = document.querySelector('#report');
   report.hidden = true;
   if (!parsed) {
     renderError(new Error('could not parse that as a GitHub repo — try "owner/repo" or a github.com URL'));
+    btn.disabled = false;
     return;
   }
   history.replaceState(null, '', `?repo=${encodeURIComponent(parsed.full)}`);
   document.querySelector('#repo-input').value = parsed.full;
   try {
-    await analyze(parsed.full);
+    await analyze(parsed.full, isCurrent);
   } catch (error) {
+    if (!isCurrent()) return;
     if (error.status === 404) {
       renderError(new Error(`${parsed.full} not found — rederive only works on public repositories`));
     } else {
       renderError(error);
     }
   } finally {
-    document.querySelector('#grade-btn').disabled = false;
+    if (isCurrent()) btn.disabled = false;
   }
 }
 
@@ -169,13 +182,51 @@ async function selftest() {
     const scan = scanScriptText('fetch.py', 'import requests\nr = requests.get("https://example.com/api/live")\nopen("data/out.csv","w").write(r.text)\n', facts);
     return `${scan.networkCalls},${scan.unpinnedFetch},${scan.writesData}`;
   }, 'true,true,true');
+  await check('scan: one pinned + one live URL is still unpinned', () => {
+    const facts = classifyTree([{ path: 'data/out.csv', type: 'blob', size: 200_000, sha: 'x' }]);
+    const scan = scanScriptText('fetch.py',
+      'import requests\n'
+      + 'a = requests.get("https://raw.githubusercontent.com/o/r/31986353ea2012c8a84ac7fc01f244aefb6a522d/data.json")\n'
+      + 'b = requests.get("https://example.com/api/live")\n'
+      + 'open("data/out.csv","w").write(a.text + b.text)\n', facts);
+    return `${scan.pinnedUrls.length},${scan.liveUrls.length},${scan.unpinnedFetch}`;
+  }, '1,1,true');
+  await check('grade: verified pins + live fetch => C not B', () => {
+    const scan = { path: 'fetch.py', referencesData: true, writesData: true, wiresGenerators: false, networkCalls: true, unpinnedFetch: true, pinnedUrls: [], liveUrls: ['x'], commitPins: [], readsCommittedInputs: [], scheduledWorkflow: false };
+    return computeGrade({
+      facts: { gradable: true, dataFiles: [{ path: 'data/out.csv', size: 200_000 }], dataDirs: ['data/'], totalDataBytes: 200_000, codeFiles: [{ path: 'fetch.py' }] },
+      scans: [scan],
+      scannedCount: 1,
+      truncated: false,
+      pinReport: { rows: [{ pin: {}, status: 'verified' }], verified: 1, weak: 0, failed: 0, skipped: 0 },
+      manifest: null,
+    }).grade;
+  }, 'C');
+  await check('classifyTree excludes test files from code candidates', () => {
+    const facts = classifyTree([
+      { path: 'tools/fetch.test.mjs', type: 'blob', size: 5_000, sha: 'x' },
+      { path: 'tools/fetch.mjs', type: 'blob', size: 5_000, sha: 'x' },
+      { path: 'test_scrape.py', type: 'blob', size: 5_000, sha: 'x' },
+    ]);
+    return facts.codeFiles.map((f) => f.path).join(',');
+  }, 'tools/fetch.mjs');
+  await check('grade: generic writes without data reference are not a generator', () => {
+    const scan = { path: 'build.js', referencesData: false, writesData: true, wiresGenerators: false, networkCalls: false, unpinnedFetch: false, pinnedUrls: [], liveUrls: [], commitPins: [], readsCommittedInputs: [], scheduledWorkflow: false };
+    return computeGrade({
+      facts: { gradable: true, dataFiles: [{ path: 'data/out.csv', size: 200_000 }], dataDirs: ['data/'], totalDataBytes: 200_000, codeFiles: [{ path: 'build.js' }] },
+      scans: [scan],
+      scannedCount: 1,
+      truncated: false,
+      pinReport: null,
+      manifest: null,
+    }).grade;
+  }, 'F');
   renderSelftest(results);
 }
 
 const form = document.querySelector('#grade-form');
 form.addEventListener('submit', (e) => {
   e.preventDefault();
-  document.querySelector('#grade-btn').disabled = true;
   run(document.querySelector('#repo-input').value);
 });
 for (const chip of document.querySelectorAll('.chip')) {
