@@ -7,13 +7,17 @@ export function computeGrade(ev) {
   const bullets = [];
   const add = (severity, text, paths = []) => bullets.push({ severity, text, paths });
 
-  if (!ev.facts.gradable) {
+  // A rederive.json makes a repo gradable regardless of data volume —
+  // the manifest itself declares which committed files are the data.
+  if (!ev.facts.gradable && !ev.manifest) {
     add('warn', 'No significant committed data files found — nothing to grade.');
     return { grade: 'N/A', verdict: 'no significant committed data', bullets, next: [] };
   }
 
-  add('info', `${ev.facts.dataFiles.length} data file(s), ${formatBytes(ev.facts.totalDataBytes)} total, in ${ev.facts.dataDirs.slice(0, 5).join(', ') || 'repo root'}.`,
-    ev.facts.dataFiles.slice(0, 5).map((f) => f.path));
+  if (ev.facts.dataFiles.length > 0) {
+    add('info', `${ev.facts.dataFiles.length} data file(s), ${formatBytes(ev.facts.totalDataBytes)} total, in ${ev.facts.dataDirs.slice(0, 5).join(', ') || 'repo root'}.`,
+      ev.facts.dataFiles.slice(0, 5).map((f) => f.path));
+  }
   if (ev.truncated) add('warn', 'Repository tree was truncated by the GitHub API — analysis covers a sample of files.');
 
   const generators = ev.scans.filter((s) => s.referencesData || s.writesData || s.wiresGenerators);
@@ -25,7 +29,7 @@ export function computeGrade(ev) {
   if (ev.manifest) {
     if (ev.manifest.status === 'passed') {
       add('good', `rederive.json verified: transform re-ran in the browser sandbox and ${ev.manifest.outputsMatched} output(s) matched the committed bytes exactly.`);
-      return { grade: 'A', verdict: 're-derived in this browser, byte-for-byte', bullets, next: [] };
+      return { grade: 'A', verdict: 'the recipe just ran here and reproduced the committed data exactly', bullets, next: [] };
     }
     add('bad', `A attempt failed: ${ev.manifest.reason}`);
   }
