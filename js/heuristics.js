@@ -5,7 +5,7 @@
 
 const DATA_EXTS = new Set(['csv', 'tsv', 'json', 'ndjson', 'jsonl', 'geojson', 'xml', 'parquet', 'arrow', 'sqlite', 'db']);
 const DATA_DIR_RE = /^(data|datasets?|outputs?|out|generated|gen|derived|processed)$/i;
-const CODE_EXTS = new Set(['js', 'mjs', 'cjs', 'ts', 'py', 'rb', 'sh', 'r', 'pl']);
+const CODE_EXTS = new Set(['js', 'mjs', 'cjs', 'ts', 'py', 'rb', 'sh', 'r', 'pl', 'go', 'rs', 'java', 'jl', 'ipynb']);
 const GENERATOR_NAME_RE = /(build|generat|gen[_-]|fetch|update|scrape|crawl|download|derive|etl|pipeline|refresh|sync|convert|process|make[_-]|import)/i;
 const CODE_DIR_RE = /^(scripts?|tools?|bin|src|etl|pipeline)$/i;
 const EXCLUDED_DIR_RE = /^(node_modules|vendor|\.git|tests?|test|spec|fixtures?|__snapshots__|__tests__|examples?)$/i;

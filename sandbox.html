@@ -9,9 +9,15 @@
 </head>
 <body>
 <script type="module">
+// Refuse to run outside the sandboxed iframe: opened top-level (or framed
+// without the sandbox attribute) this page is NOT an opaque origin — it would
+// share laynr.github.io storage. Opaque origin serializes as the string "null".
+if (window.origin !== 'null' || window.parent === window) throw new Error('rederive sandbox: refusing to run outside a sandboxed iframe');
+const EXPECTED_PARENT_ORIGIN = new URL(location.href).origin;
 window.addEventListener('message', async (event) => {
   const msg = event.data;
   if (!msg || msg.type !== 'run') return;
+  if (event.origin !== EXPECTED_PARENT_ORIGIN) return;
   const reply = (payload, transfers) => event.source.postMessage({ nonce: msg.nonce, ...payload }, '*', transfers ?? []);
   try {
     // Build blob URLs deepest-first, rewriting relative import specifiers.

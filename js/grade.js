@@ -35,6 +35,19 @@ export function computeGrade(ev) {
   }
 
   if (generators.length === 0) {
+    // Contradictory evidence: no generator identified, but pins actively
+    // verified — that's not a flat F.
+    if (ev.pinReport && ev.pinReport.failed === 0 && ev.pinReport.verified + ev.pinReport.weak > 0) {
+      add('warn', `No generation code identified, but ${ev.pinReport.verified + ev.pinReport.weak} pinned input(s) were verified — provenance is recorded even though the recipe wasn't found.`);
+      return {
+        grade: 'C',
+        verdict: 'generator not identified, but verified pins exist',
+        bullets,
+        next: [
+          'Commit the script that turns the pinned inputs into the data files, referencing their paths, to reach B.',
+        ],
+      };
+    }
     if (ev.facts.codeFiles.length === 0) {
       add('bad', 'No generation code in the repository — data only. The data cannot be re-derived or traced.');
     } else {
