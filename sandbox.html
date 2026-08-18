@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- No network egress: repo transform code runs here with default-src 'none'.
+       Loaded with sandbox="allow-scripts" (no allow-same-origin) → opaque origin. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:">
+  <title>rederive sandbox</title>
+</head>
+<body>
+<script type="module">
+window.addEventListener('message', async (event) => {
+  const msg = event.data;
+  if (!msg || msg.type !== 'run') return;
+  const reply = (payload, transfers) => event.source.postMessage({ nonce: msg.nonce, ...payload }, '*', transfers ?? []);
+  try {
+    // Build blob URLs deepest-first, rewriting relative import specifiers.
+    const sources = new Map(Object.entries(msg.moduleSources));
+    const blobUrls = new Map();
+    const resolveRel = (from, spec) => {
+      const parts = from.split('/').slice(0, -1);
+      for (const seg of spec.split('/')) {
+        if (seg === '.' || seg === '') continue;
+        else if (seg === '..') parts.pop();
+        else parts.push(seg);
+      }
+      return parts.join('/');
+    };
+    const build = (path, stack) => {
+      if (blobUrls.has(path)) return blobUrls.get(path);
+      if (stack.includes(path)) throw new Error('circular import: ' + stack.concat(path).join(' -> '));
+      let text = sources.get(path);
+      if (text == null) throw new Error('missing module: ' + path);
+      const importRe = /((?:^|\n)\s*(?:import|export)[^'"]*from\s*|import\s*\(\s*)(["'])([^"']+)\2/g;
+      text = text.replace(importRe, (full, head, quote, spec) => {
+        const target = resolveRel(path, spec);
+        return head + quote + build(target, stack.concat(path)) + quote;
+      });
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
+      blobUrls.set(path, url);
+      return url;
+    };
+    const entryUrl = build(msg.entryModule, []);
+    const mod = await import(entryUrl);
+    const entry = mod[msg.entryName];
+    if (typeof entry !== 'function') throw new Error('entry export "' + msg.entryName + '" is not a function');
+    const inputs = {};
+    for (const [name, buf] of Object.entries(msg.inputs)) inputs[name] = new Uint8Array(buf);
+    const result = await entry(inputs);
+    if (!result || typeof result !== 'object') throw new Error('transform must return an object of {outputPath: bytes|string}');
+    const outputs = {};
+    const transfers = [];
+    for (const [path, value] of Object.entries(result)) {
+      const bytes = typeof value === 'string' ? new TextEncoder().encode(value)
+        : value instanceof Uint8Array ? value
+        : value instanceof ArrayBuffer ? new Uint8Array(value)
+        : null;
+      if (!bytes) throw new Error('output ' + path + ' is neither bytes nor string');
+      const copy = bytes.slice().buffer;
+      outputs[path] = copy;
+      transfers.push(copy);
+    }
+    reply({ type: 'result', outputs }, transfers);
+  } catch (error) {
+    reply({ type: 'error', message: String(error && error.message || error) });
+  }
+});
+window.parent.postMessage({ type: 'sandbox-ready' }, '*');
+</script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rederive.json spec</title>
+  <meta name="description" content="rederive.json v1 — declare pinned inputs and a deterministic transform so anyone's browser can re-derive your committed data byte-for-byte.">
+  <link rel="stylesheet" href="./css/site.css">
+</head>
+<body class="spec">
+  <main>
+    <h1><a href="./">rederive</a>.json</h1>
+    <p class="tagline">spec v1 — how a repo earns an A</p>
+
+    <section>
+      <p>An <strong>A</strong> grade means: <a href="./">the rederive page</a> downloaded your pinned
+      inputs, verified their hashes, re-ran your transform inside a
+      no-network browser sandbox, and the output matched your committed data
+      <strong>byte-for-byte</strong>. Trust me becomes check me.</p>
+      <p>To opt in, commit a <code>rederive.json</code> at the repository root:</p>
+      <pre>{
+  "rederive": 1,
+  "inputs": [
+    {
+      "name": "upstream",
+      "repo": "OWNER/REPO",
+      "commit": "31986353ea2012c8a84ac7fc01f244aefb6a522d",
+      "path": "data.json",
+      "sha256": "3a42d964db75aba91a52a37483e0419f3f325a7c9cb03c353b4ef76cfb793b35"
+    },
+    { "name": "raw", "path": "sources/raw.csv" }
+  ],
+  "transform": { "module": "scripts/transform.mjs", "entry": "derive" },
+  "outputs": [ "data/report.json" ]
+}</pre>
+    </section>
+
+    <section>
+      <h2>inputs</h2>
+      <p>Two kinds:</p>
+      <ul>
+        <li><strong>External pin</strong> — <code>repo</code> + a 40-hex
+        <code>commit</code> + <code>path</code>, and at least one content hash
+        (<code>sha256</code> of the raw bytes, and/or the git
+        <code>blobSha</code>). The page downloads the file at exactly that
+        commit and recomputes both hashes. A mismatch fails the run.</li>
+        <li><strong>Local input</strong> — just a <code>path</code> committed in
+        your own repo. The analyzed commit itself is the pin; the page checks
+        the fetched bytes against your tree's blob sha. No hash fields needed.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>transform</h2>
+      <p><code>module</code> is a path to a <strong>pure ES module</strong> in
+      your repo. Relative imports to other committed modules are allowed
+      (up to 10 files); bare or absolute specifiers are rejected. It runs in a
+      sandboxed iframe with <code>default-src 'none'</code> — no network, no
+      storage, no cookies.</p>
+      <p>The entry function (default name <code>derive</code>) receives your
+      inputs as bytes and returns your outputs:</p>
+      <pre>export async function derive(inputs) {
+  // inputs = { upstream: Uint8Array, raw: Uint8Array }
+  const data = JSON.parse(new TextDecoder().decode(inputs.upstream));
+  // ... pure, deterministic work ...
+  return { "data/report.json": JSON.stringify(result, null, 2) + "\n" };
+}</pre>
+      <p><strong>Determinism rules.</strong> The same input bytes must always
+      produce the same output bytes:</p>
+      <ul>
+        <li>No wall clock. Derive any timestamp from the <em>input content</em>
+        (e.g. the newest upstream date), never from <code>Date.now()</code>.</li>
+        <li>No randomness, no locale-dependent formatting, no object-key
+        ordering you don't control (build objects in a fixed order, or sort keys).</li>
+        <li>Byte-exact serialization: pick one and stick to it (indentation,
+        trailing newline, number formatting).</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>outputs</h2>
+      <p>Repo paths of the committed files your transform regenerates. The page
+      compares the git blob sha of what your transform just produced against
+      what is committed at the analyzed commit. Expected hashes live nowhere in
+      the manifest — your own commit is the ground truth.</p>
+    </section>
+
+    <section>
+      <h2>regenerating</h2>
+      <p>When upstream moves: update each input's <code>commit</code> and
+      <code>sha256</code>, re-run your transform (the same module runs in Node
+      — <code>crypto.subtle</code>, <code>TextDecoder</code> and pure JS work
+      in both), commit inputs + outputs together. Every commit of your repo is
+      then independently re-derivable.</p>
+      <p>Reference implementation of this pattern:
+      <a href="https://github.com/laynr/FedRAMP">laynr/FedRAMP</a> — resolves
+      upstream branches to immutable commits, records blob sha + sha256 + byte
+      count per source, shares its pure transforms between Node and the
+      browser, and derives its generated timestamp from upstream data.</p>
+    </section>
+
+    <section>
+      <h2>the grades</h2>
+      <table>
+        <tr><th>F</th><td>data files present; no generation code, or the output is hand-edited</td></tr>
+        <tr><th>C</th><td>a script exists, but it fetches live, unpinned sources</td></tr>
+        <tr><th>B</th><td>inputs pinned to commits/hashes (or committed in-tree) — the page re-downloads them and verifies the recorded hashes</td></tr>
+        <tr><th>A</th><td>rederive.json present — the page re-runs the recipe in a sandbox and the output matches byte-for-byte</td></tr>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

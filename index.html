@@ -3,43 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.github.com https://raw.githubusercontent.com https://cdn.jsdelivr.net; img-src 'self'; style-src 'self'; script-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'">
   <title>rederive</title>
-  <style>
-    :root {
-      color-scheme: light dark;
-      --bg: #fdfdfc;
-      --fg: #1a1a1a;
-      --muted: #6b6b6b;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #131314;
-        --fg: #e8e8e6;
-        --muted: #9a9a98;
-      }
-    }
-    * { margin: 0; box-sizing: border-box; }
-    body {
-      background: var(--bg);
-      color: var(--fg);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      min-height: 100svh;
-      display: grid;
-      place-items: center;
-    }
-    main { text-align: center; padding: 2rem; }
-    h1 {
-      font-size: clamp(2rem, 8vw, 4rem);
-      font-weight: 500;
-      letter-spacing: -0.02em;
-    }
-    p { margin-top: 0.75rem; color: var(--muted); }
-  </style>
+  <meta name="description" content="Paste a GitHub repo. Find out whether its committed data can actually be re-derived from the scripts it ships.">
+  <link rel="stylesheet" href="./css/site.css">
 </head>
 <body>
   <main>
     <h1>rederive</h1>
-    <p>coming soon</p>
+    <p class="tagline">can this repo's data actually be re-derived from its own scripts? paste it, find out.</p>
+
+    <form id="grade-form">
+      <input id="repo-input" type="text" placeholder="owner/repo or github.com URL" autocomplete="off" spellcheck="false" autofocus>
+      <button id="grade-btn" type="submit">grade</button>
+    </form>
+    <div class="chips">
+      <span class="try">try:</span>
+      <button type="button" class="chip" data-repo="CSSEGISandData/COVID-19">CSSEGISandData/COVID-19</button>
+      <button type="button" class="chip" data-repo="owid/covid-19-data">owid/covid-19-data</button>
+      <button type="button" class="chip" data-repo="laynr/FedRAMP">laynr/FedRAMP</button>
+      <button type="button" class="chip" data-repo="laynr/rederive-demo">laynr/rederive-demo</button>
+    </div>
+    <p class="spec-link">grades: <strong>F</strong> data with no recipe · <strong>C</strong> recipe with moving inputs · <strong>B</strong> pinned inputs, verified here · <strong>A</strong> re-derived in your browser, byte-for-byte — <a href="./spec.html">the rederive.json spec</a></p>
+
+    <ol id="progress" hidden></ol>
+    <div id="report" hidden></div>
   </main>
+  <script type="module" src="./js/main.js"></script>
 </body>
 </html>
