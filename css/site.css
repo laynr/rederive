@@ -84,7 +84,14 @@ a { color: inherit; }
   cursor: pointer;
 }
 .chip:hover { border-color: var(--muted); }
-.spec-link { margin-top: 1.2rem; font-size: 0.85rem; color: var(--muted); }
+.grade-legend { list-style: none; padding: 0; margin: 1.2rem 0 0; font-size: 0.85rem; color: var(--muted); }
+.grade-legend li { padding: 0.1rem 0; }
+.grade-legend strong { display: inline-block; width: 1.4ch; }
+.grade-legend .g-a { color: var(--grade-a); }
+.grade-legend .g-b { color: var(--grade-b); }
+.grade-legend .g-c { color: var(--grade-c); }
+.grade-legend .g-f { color: var(--grade-f); }
+.spec-link { margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); }
 
 #progress { list-style: none; padding: 0; margin: 2rem 0 0; }
 #progress .step { color: var(--muted); display: flex; gap: 0.6rem; padding: 0.15rem 0; }
