@@ -145,6 +145,20 @@ async function selftest() {
   await check('sha256 of empty', () => sha256Hex(new Uint8Array(0)), 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
   await check('parseRepoInput url', () => parseRepoInput('https://github.com/laynr/FedRAMP/tree/main/docs')?.full, 'laynr/FedRAMP');
   await check('parseRepoInput plain', () => parseRepoInput('laynr/rederive')?.full, 'laynr/rederive');
+  await check('parseRepoInput .git url', () => parseRepoInput('https://github.com/zonetecde/random-github-repo.git')?.full, 'zonetecde/random-github-repo');
+  await check('parseRepoInput ssh remote', () => parseRepoInput('git@github.com:laynr/rederive.git')?.full, 'laynr/rederive');
+  await check('parseRepoInput raw url', () => parseRepoInput('https://raw.githubusercontent.com/laynr/FedRAMP/main/README.md')?.full, 'laynr/FedRAMP');
+  await check('parseRepoInput pages url', () => parseRepoInput('https://laynr.github.io/rederive/')?.full, 'laynr/rederive');
+  await check('parseRepoInput clone command', () => parseRepoInput('git clone https://github.com/laynr/FedRAMP.git')?.full, 'laynr/FedRAMP');
+  await check('parseRepoInput jsdelivr url', () => parseRepoInput('https://cdn.jsdelivr.net/gh/laynr/FedRAMP@3617dd4582cf/docs/data/meta.json')?.full, 'laynr/FedRAMP');
+  await check('parseRepoInput api url', () => parseRepoInput('https://api.github.com/repos/laynr/FedRAMP')?.full, 'laynr/FedRAMP');
+  await check('parseRepoInput markdown link', () => parseRepoInput('[FedRAMP](https://github.com/laynr/FedRAMP)')?.full, 'laynr/FedRAMP');
+  await check('parseRepoInput url in sentence', () => parseRepoInput('check out https://github.com/laynr/FedRAMP today')?.full, 'laynr/FedRAMP');
+  await check('parseRepoInput rejects reserved path', () => String(parseRepoInput('github.com/orgs/anthropics')), 'null');
+  await check('parseRepoInput rejects dot-only repo', () => String(parseRepoInput('laynr/..')), 'null');
+  await check('parseRepoInput rejects credential url', () => String(parseRepoInput('https://evil.com@github.com/a/b')), 'null');
+  await check('parseRepoInput rejects other hosts', () => String(parseRepoInput('https://gitlab.com/foo/bar')), 'null');
+  await check('parseRepoInput rejects lookalike host', () => String(parseRepoInput('https://evilgithub.com/a/b')), 'null');
   await check('classifyTree covid-style', () => {
     const entries = Array.from({ length: 12 }, (_, i) => ({ path: `csse_covid_19_data/daily/${i}.csv`, type: 'blob', size: 90_000, sha: 'x' }));
     const facts = classifyTree(entries);
