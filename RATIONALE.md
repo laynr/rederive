@@ -66,7 +66,9 @@ nothing server-side to trust.
 
 ## Time spent
 
-Roughly one working day end-to-end: concept and grading rubric, the static
+About 1 hour 40 minutes in a single Claude Code session (the unedited
+transcript is in `transcripts/`): concept and grading rubric, the static
 analyzer, active pin verification, the rederive.json spec + sandbox executor,
 the demo repo, an in-page selftest suite (24 vectors), browser-driven E2E
-across six live repos, and two deploy/verify cycles on GitHub Pages.
+across six live repos, and repeated deploy/verify cycles on GitHub Pages —
+plus separate time on this write-up's polish and the video.
